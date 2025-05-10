@@ -36,6 +36,10 @@ While the exact parsing method is up to you, each `releases_*.json` file is expe
 1.  **Download Raw Dumps**: Obtain the data dumps from [Discogs](https://data.discogs.com/) and [MusicBrainz](https://musicbrainz.org/doc/MusicBrainz_Database/Download).
 2.  **Parse the Dumps**:
     *   You will need to use or create separate tools/scripts to parse these raw dumps and convert them into the `releases_*.json` format.
+    *   The owner of this repository also provides example parsers that might serve as a starting point or be used directly:
+        *   For Discogs: [etsabary/discogs_data_parser](https://github.com/etsabary/discogs_data_parser)
+        *   For MusicBrainz: [etsabary/musicbrainz_data_parser](https://github.com/etsabary/musicbrainz_data_parser)
+        (Note: These are typically located in a folder one level up from this `playlist_profiler_dm` repository, alongside the `essential_discogs_data` and `essential_musicbrainz_data` folders they help create.)
     *   Look for existing third-party parsers for Discogs/MusicBrainz data that can output JSON per release. For example, some tools might convert Discogs XML dumps into line-delimited JSON (`.jsonl`) which you might then need to split or process further into the `releases_*.json` structure expected here.
     *   If writing your own parser, aim to extract the fields mentioned above for each release into its own JSON file. The naming convention `releases_*.json` suggests multiple files, possibly one per release or batched releases.
 
