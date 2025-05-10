@@ -71,8 +71,20 @@ def normalize_artist_title(text: str) -> str:
         text_nfd = unicodedata.normalize("NFD", text)
         text_nodiacritics = "".join(c for c in text_nfd if unicodedata.category(c) != 'Mn')
         text_lower = text_nodiacritics.lower()
+        # Remove content within parentheses and the parentheses themselves, replacing with a space
+        text_no_paren = re.sub(r'\s*\(.*?\)\s*', ' ', text_lower)
+        # Remove content within square brackets and the brackets themselves, replacing with a space
+        # --- Conditional bracket handling ---
+        stripped_for_brackets_check = text_no_paren.strip()
+        match_entire_bracketed = re.fullmatch(r'\[(.*)\]', stripped_for_brackets_check) # (.*) is greedy but ok with fullmatch
+
+        if match_entire_bracketed:
+            text_no_brackets = match_entire_bracketed.group(1) # Keep content if entire title was [...]
+        else:
+            # Otherwise, remove all bracketed parts as if they are suffixes/tags
+            text_no_brackets = re.sub(r'\s*\[.*?\]\s*', ' ', text_no_paren)
         # Replace punctuation with space first, then compact multiple spaces
-        text_nopunct_spaced = _PUNCT_RE_ARTIST.sub(" ", text_lower)
+        text_nopunct_spaced = _PUNCT_RE_ARTIST.sub(" ", text_no_brackets) # Operate on text_no_brackets
         text_compact = _SPACE_RE_ARTIST.sub(" ", text_nopunct_spaced).strip()
         return text_compact
     except Exception as e: # Fallback if complex normalization fails
