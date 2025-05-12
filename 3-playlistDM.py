@@ -198,10 +198,135 @@ class PlaylistGeneratorApp:
         else: self.year_min_handle_id = min_handle_id; self.year_max_handle_id = max_handle_id
 
     def select_file(self):
-        """Open file dialog to select CSV and load data."""
-        fpath = filedialog.askopenfilename(title="Select Ranked CSV File", filetypes=[("CSV files", "*.csv")])
-        if fpath: self.file_path.set(os.path.basename(fpath)); self.load_data(fpath)
-        else: self.file_path.set(""); self.df = None; self.disable_controls()
+        """Open a custom dialog to select a valid ranked CSV file and load data."""
+        # Prompt for a folder containing CSV files
+        file_dir = filedialog.askdirectory(
+            title="Select Folder containing CSV files",
+            initialdir=getattr(self, '_last_dir', os.getcwd())
+        )
+        if not file_dir:
+            self.file_path.set("")
+            self.df = None
+            self.disable_controls()
+            return
+        selected_file = None
+
+        # Hold filenames and validity flags
+        file_list = []
+        file_valid = []
+
+        top = tk.Toplevel(self.master)
+        top.title("Select Ranked CSV File")
+        top.transient(self.master)
+        top.grab_set()
+
+        # Directory frame
+        dir_frame = ttk.Frame(top, padding=5)
+        dir_frame.pack(fill=tk.X)
+        dir_label = ttk.Label(dir_frame, text=file_dir, anchor=tk.W)
+        dir_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        def change_folder():
+            nonlocal file_dir
+            new_dir = filedialog.askdirectory(title="Select Folder", initialdir=file_dir)
+            if new_dir:
+                file_dir = new_dir
+                dir_label.config(text=file_dir)
+                populate_list()
+        ttk.Button(dir_frame, text="Change Folder", command=change_folder).pack(side=tk.RIGHT)
+
+        # File list frame with scrollbar
+        list_frame = ttk.Frame(top, padding=5)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        listbox = tk.Listbox(list_frame, yscrollcommand=scrollbar.set)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        # Buttons
+        btn_frame = ttk.Frame(top, padding=5)
+        btn_frame.pack(fill=tk.X)
+        def on_open():
+            nonlocal selected_file, file_dir
+            sel = listbox.curselection()
+            if not sel:
+                return
+            idx = sel[0]
+            name = file_list[idx]
+            # Handle parent directory marker
+            if name == '..':
+                parent = os.path.dirname(file_dir)
+                if parent and os.path.isdir(parent):
+                    file_dir = parent
+                    dir_label.config(text=file_dir)
+                    populate_list()
+                return
+            path = os.path.join(file_dir, name)
+            # Enter subdirectory
+            if os.path.isdir(path):
+                file_dir = path
+                dir_label.config(text=file_dir)
+                populate_list()
+                return
+            # Select CSV file
+            if not file_valid[idx]:
+                messagebox.showwarning("Invalid CSV", "Selected file does not have required columns.")
+                return
+            selected_file = path
+            top.destroy()
+        def on_cancel():
+            top.destroy()
+        ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(btn_frame, text="Open", command=on_open).pack(side=tk.RIGHT)
+
+        # Populate list function
+        def populate_list():
+            file_list.clear()
+            file_valid.clear()
+            listbox.delete(0, tk.END)
+            try:
+                entries = os.listdir(file_dir)
+            except Exception as err:
+                messagebox.showerror("Error", f"Cannot list directory:\n{file_dir}\n\n{err}")
+                return
+            for fname in sorted(entries):
+                if fname.lower().endswith('.csv') and os.path.isfile(os.path.join(file_dir, fname)):
+                    path = os.path.join(file_dir, fname)
+                    valid = False
+                    try:
+                        with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                            header = f.readline()
+                        cols = [c.strip().strip('"').strip("'") for c in header.split(',')]
+                        required = ['Artist', 'Title', 'Combined Score', 'Year']
+                        valid = all(r in cols for r in required)
+                    except:
+                        valid = False
+                    file_list.append(fname)
+                    file_valid.append(valid)
+                    listbox.insert(tk.END, fname)
+                    if not valid:
+                        listbox.itemconfig(tk.END, fg='grey')
+            if file_list:
+                listbox.config(state=tk.NORMAL)
+            else:
+                listbox.insert(tk.END, "(no CSV files found)")
+                listbox.config(state=tk.DISABLED)
+
+        # Double-click to open
+        listbox.bind("<Double-1>", lambda e: on_open())
+
+        populate_list()
+        self.master.wait_window(top)
+
+        # After dialog closes
+        if selected_file:
+            self._last_dir = file_dir
+            self.file_path.set(os.path.basename(selected_file))
+            self.load_data(selected_file)
+        else:
+            self.file_path.set("")
+            self.df = None
+            self.disable_controls()
 
     def load_data(self, fpath):
         """Load data from CSV, find score/year ranges, and update GUI."""
@@ -393,16 +518,17 @@ class PlaylistGeneratorApp:
             if current_artist_count < max_artist: playlist.append(f"{artist} - {title}"); artist_counts[artist] = current_artist_count + 1
         print(f"Selected {len(playlist)} tracks for the playlist.")
         if not playlist: messagebox.showinfo("Empty Playlist", "Could not select any tracks based on the criteria."); return
-        playlist_text = "\n".join(playlist); save_path = filedialog.asksaveasfilename(title="Save Playlist As", defaultextension=".txt", filetypes=[("Text files", "*.txt")])
-        if save_path:
+        playlist_text = "\n".join(playlist)
+        if PYPERCLIP_AVAILABLE:
             try:
-                with open(save_path, 'w', encoding='utf-8') as f: f.write(playlist_text); print(f"Playlist saved to: {save_path}")
-                if PYPERCLIP_AVAILABLE:
-                    try: pyperclip.copy(playlist_text); print("Playlist copied to clipboard."); messagebox.showinfo("Playlist Generated", f"Playlist saved to:\n{save_path}\n\nAlso copied to clipboard.")
-                    except Exception as clip_err: print(f"Error copying to clipboard: {clip_err}"); messagebox.showinfo("Playlist Saved", f"Playlist saved to:\n{save_path}\n\n(Could not copy to clipboard: {clip_err})")
-                else: messagebox.showinfo("Playlist Saved", f"Playlist saved to:\n{save_path}\n\n(Clipboard functionality disabled - install pyperclip).")
-            except Exception as e: messagebox.showerror("Save Error", f"Failed to save playlist file:\n{save_path}\n\nError: {e}")
-        else: print("Playlist generation cancelled by user.")
+                pyperclip.copy(playlist_text)
+                print("Playlist copied to clipboard.")
+                messagebox.showinfo("Playlist Copied", "Playlist has been copied to the clipboard.")
+            except Exception as e:
+                print(f"Error copying to clipboard: {e}")
+                messagebox.showerror("Clipboard Error", f"Failed to copy playlist to clipboard:\n{e}")
+        else:
+            messagebox.showwarning("Clipboard Unavailable", "Clipboard functionality is disabled. Install pyperclip to enable it.")
 
     def disable_controls(self):
         """Disable interactive elements when no file is loaded."""
