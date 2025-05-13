@@ -345,14 +345,8 @@ def select_target_subgenres(all_sorted_subgenres_with_prob):
 
                     if valid_selection and temp_selected_names:
                         print(f"Selected {len(temp_selected_names)} subgenres manually.")
-                        # To maintain an order for rank weighting, we sort the *selected names*
-                        # by their original profile rank.
-                        name_to_original_rank = {name: i for i, (name, _) in enumerate(all_sorted_subgenres_with_prob)}
-                        final_manual_selection_sorted_by_profile_rank = sorted(
-                            temp_selected_names,
-                            key=lambda name: name_to_original_rank[name]
-                        )
-                        return final_manual_selection_sorted_by_profile_rank
+                        # Return manual selection in the order specified by the user
+                        return temp_selected_names
                     elif not temp_selected_names and valid_selection: print("No valid indices entered.")
                 except ValueError: print("Invalid input. Please enter comma-separated numbers only.")
         else: print("Invalid choice. Please enter 1, 2, or 3.")
