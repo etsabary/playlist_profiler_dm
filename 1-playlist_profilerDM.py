@@ -26,6 +26,7 @@ MUSICBRAINZ_DATA_FOLDER = '../essential_musicbrainz_data' # Path for MusicBrainz
 MIN_VALID_YEAR = 1900
 MAX_VALID_YEAR = 2035
 SUBGENRE_POS_WEIGHT_BASE = 0.7
+LABEL_POS_WEIGHT_BASE = 0.7 # Added: Positional weight base for labels, can be tuned separately
 
 # Weighting Configuration for Profiler (Release Context)
 WEIGHT_PRIMARY_ARTIST_RELEASE = 3.0
@@ -414,11 +415,40 @@ def build_and_save_user_profile(matches_data, output_profile_filepath, source_pl
                     if subgenre_name and isinstance(subgenre_name, str):
                         positional_weight = math.pow(SUBGENRE_POS_WEIGHT_BASE, idx)
                         final_weight_for_subgenre = base_weight * positional_weight
-                        song_specific_subgenre_counts[subgenre_name.strip()] += final_weight_for_subgenre
+                        song_specific_subgenre_counts[subgenre_name.strip()] += final_weight_for_subgenre # Ensure strip for subgenres too
             for genre_name in (g for g in release.get('genres', []) if g and isinstance(g,str)):
                 song_specific_genre_counts[genre_name.strip()] += base_weight
-            for label_name in (l for l in release.get('labels', []) if l and isinstance(l,str)):
-                song_specific_label_counts[label_name.strip()] += base_weight
+
+            labels_list = release.get('labels')
+            if labels_list and isinstance(labels_list, list):
+                for idx, label_name_raw in enumerate(labels_list):
+                    if not label_name_raw or not isinstance(label_name_raw, str):
+                        continue
+                    # Process label, ensuring it's valid and not in the ignore list
+                    current_label_value = label_name_raw.strip() # Ensure label_name_raw is stripped
+                    current_label_lower = current_label_value.lower()
+
+                    skip_label = False
+                    if not current_label_value: # Skip if empty after stripping
+                        skip_label = True
+                    # Check conditions for skipping the label (case-insensitive)
+                    elif current_label_lower.startswith("no label"): # Condition 1
+                        skip_label = True
+                    elif current_label_lower.startswith('["no label"]'): # Condition 2
+                        skip_label = True
+                    elif current_label_lower.startswith("not on label"): # Condition 3
+                        skip_label = True
+                    elif "self-released" in current_label_lower: # Condition 4
+                        skip_label = True
+
+                    if skip_label:
+                        continue
+
+                    # If label is valid, calculate its weight and add to song-specific counts
+                    label_positional_weight = math.pow(LABEL_POS_WEIGHT_BASE, idx)
+                    final_weight_for_label = base_weight * label_positional_weight
+                    song_specific_label_counts[current_label_value] += final_weight_for_label
+
             year_str = release.get('year'); decade = get_decade(year_str)
             if decade: song_specific_decade_counts[decade] += base_weight
             country = release.get('country')
@@ -449,7 +479,7 @@ def build_and_save_user_profile(matches_data, output_profile_filepath, source_pl
         "_metadata": {
             "source_playlist_file": source_playlist_filename,
             "data_sources_used": data_sources_metadata, # List of sources like ["discogs", "musicbrainz"]
-            "profile_type": f"two_stage_aggregation_pos{str(SUBGENRE_POS_WEIGHT_BASE).replace('.', 'p')}_subgenre_{source_tag}",
+            "profile_type": f"two_stage_aggregation_subpos{str(SUBGENRE_POS_WEIGHT_BASE).replace('.', 'p')}_labpos{str(LABEL_POS_WEIGHT_BASE).replace('.', 'p')}_{source_tag}",
             "playlist_tracks_in_profile": len(matches_data),
             "total_song_contributions_to_subgenres": round(sum(global_playlist_subgenre_contributions.values()), 5),
             "total_song_contributions_to_genres": round(sum(global_playlist_genre_contributions.values()), 5),
@@ -457,7 +487,8 @@ def build_and_save_user_profile(matches_data, output_profile_filepath, source_pl
             "total_song_contributions_to_decades": round(sum(global_playlist_decade_contributions.values()), 5),
             "total_song_contributions_to_countries": round(sum(global_playlist_country_contributions.values()), 5),
             "profile_build_time_utc": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()),
-            "subgenre_positional_weight_base": SUBGENRE_POS_WEIGHT_BASE
+            "subgenre_positional_weight_base": SUBGENRE_POS_WEIGHT_BASE,
+            "label_positional_weight_base": LABEL_POS_WEIGHT_BASE # Added for transparency
         }
     }
     print("Final profile normalization complete.")
@@ -490,7 +521,8 @@ if __name__ == "__main__":
     print(f"--- Combined Playlist Matcher & User Profile Builder (Multi-Source, Two-Stage Profiling) ---")
     print(f"Script execution started: {time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     print(f"Matcher will use {NUM_PROCESSES_MATCHER} worker process(es) (System CPU Cores: {TOTAL_CORES}).")
-    print(f"Profiler subgenre positional weight base: {SUBGENRE_POS_WEIGHT_BASE}")
+    print(f"Profiler Subgenre Positional Weight Base: {SUBGENRE_POS_WEIGHT_BASE}")
+    print(f"Profiler Label Positional Weight Base: {LABEL_POS_WEIGHT_BASE}") # Added print for new constant
     print(f"Discogs Data Folder (relative to script): {DISCOGS_DATA_FOLDER}")
     print(f"MusicBrainz Data Folder (relative to script): {MUSICBRAINZ_DATA_FOLDER}")
     print(f"Output files will be saved to subfolder: '{OUTPUT_SUBFOLDER_NAME}'")
